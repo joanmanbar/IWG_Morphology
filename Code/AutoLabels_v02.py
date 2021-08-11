@@ -10,7 +10,7 @@
 
 
 # Dependencies
-from CustomFunctions import CropStems, EnhanceImage
+from CustomFunctions import *
 
 import time
 # start_time = time.time()
@@ -55,28 +55,218 @@ from skimage.transform import hough_circle, hough_circle_peaks, hough_ellipse
 from skimage.feature import canny
 from skimage.draw import circle_perimeter, ellipse_perimeter
 from skimage.util import img_as_ubyte
+from skimage.filters import try_all_threshold
+import skimage
+
+from skimage.morphology import (erosion, dilation, opening, closing,  # noqa
+                                white_tophat)
+from skimage.morphology import black_tophat, skeletonize, convex_hull_image, skeletonize_3d, medial_axis, thin  # noqa
+from skimage.morphology import disk, square  # noqa
 
 
+img0 = r"J:\My Drive\PROJECTS\IWG_Morphology\QP_Project\labeled\0016.tif"
+img0= r"J:\My Drive\PROJECTS\IWG_Morphology\QP_Project\export\0016-labels.png"
+img1=r"J:\My Drive\PROJECTS\IWG_Morphology\Images\Stems\Train\masks\_MG_0024.JPG.tif"
+img0 = iio.imread(img0)
+img1 = iio.imread(img1)
+img2 = np.uint8(img1)
+plt.imshow(img0)
+plt.imshow(img1)
 
+ComparePlots(2,2,[img0[:,:,0], img0[:,:,1], img0[:,:,2], img0[:,:,3]])
 
-Images = io.ImageCollection(r'..\Images\Stems\*.JPG')
-
-#-----------------------------------------------------#
-#               Hough Transform
-#-----------------------------------------------------#
+Images = io.ImageCollection(r'..\Images\Stems\Original\*.JPG')
 
 # Read image
-rgb_name = Images.files[0]
+rgb_name = Images.files[3]
 rgb = iio.imread(rgb_name)
 # plt.imshow(rgb)
 
-# Crop to gray stems
+labelled = "J:\My Drive\PROJECTS\IWG_Morphology\QP_Project\labeled\0016.tif"
+labelled = iio.imread(labelled)
+testing = labelled[:,:,0]
+plt.imshow(testing)
+plt.imshow(labelled)
+
+real_label = iio.imread("J:\My Drive\PROJECTS\IWG_Morphology\Images\Stems\Train\masks\_MG_0024.JPG.tif")
+plt.imshow(real_label)
+
+
+#-----------------------------------------------------#
+#               Detect Stems and Enhance Image
+#-----------------------------------------------------#
+
+
+# Crop to rgb stems
 img = CropStems(rgb, rgb_out = True)
-plt.imshow(img)
+# plt.imshow(img)
+# Or gray
+# gray0 = CropStems(rgb, rgb_out = False)
 
-gray0 = CropStems(rgb, rgb_out = False)
+# Enhance image
+enh0 = EnhanceImage(img, Color = None, Contrast = -0.8, Sharp = None)
+plt.imshow(enh0, cmap='gray')
+# I got great results with Contrast ~= -0.8                (Joan - May5,2021)
 
-enh0 = EnhanceImage(rgb)
+
+
+edge_sobel = filters.sobel(enh0)
+edge_scharr = filters.scharr(enh0)
+edge_prewitt = filters.prewitt(enh0)
+
+ComparePlots(1,3, [edge_sobel, edge_scharr, edge_prewitt])
+
+
+frangi = skimage.filters.frangi(enh0, black_ridges=False)
+plt.imshow(frangi)
+
+
+blurry = filters.gaussian(edge_sobel, sigma = 5)
+plt.imshow(blurry)
+
+
+
+
+
+
+
+# Skeletonize
+sk = skeletonize(gray1 > 20)
+plt.imshow(sk, cmap='gray')
+
+
+
+
+# enh0_n = enh0/enh0.max()
+# plt.imshow(enh0_n, cmap='gray')
+
+# testing = enh0 @ [1, 1, 0]
+# plt.imshow(testing, cmap='gray')
+
+# bw0 = enh0[:, :, 2] > 10
+# plt.imshow(bw0, cmap='gray')
+
+
+
+enh1 = EnhanceImage(enh0, Color = 3, Contrast = None, Sharp = None)
+plt.imshow(enh1, cmap='gray')
+
+
+
+#-----------------------------------------------------#
+#               Morphological Filtering
+#-----------------------------------------------------#
+
+
+gray0 = enh0 @ [0.2126, 0.7152, 0.0722]
+# plt.imshow(gray0, cmap='gray')
+
+# Invert scale. Add 1 so there is no Inf
+gray1 = gray0.max()/ (gray0+1)
+plt.imshow(gray1, cmap='gray')
+
+# Skeletonize
+sk = skeletonize(gray1 > 20)
+plt.imshow(sk, cmap='gray')
+
+# Skeletonize (medial axis)
+skma, distance = medial_axis(gray1 > 20, return_distance=True)
+plt.imshow(skma, cmap='gray')
+
+plot_comparison(sk, skma, "Title")
+
+# Thin
+thin_sk = thin(sk, max_iter=50)
+thin_skma = thin(skma, max_iter=50)
+
+plot_comparison(thin_sk, thin_skma, "Title")
+
+
+sk = skeletonize_3d(enh1)
+plt.imshow(sk, cmap='gray')
+
+
+sk_3d = skeletonize(enh0)
+
+
+
+# # IDEA:
+#     Fill up holes. Some of them will be stems (more circular), others will not. Skeletonize the image and remove those skeletons that are to large, which may be keep only stems (small skeletons)
+#   Look at the blobs example: https://scikit-image.org/docs/stable/auto_examples/edges/plot_skeleton.html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+gray2 = 255/(gray0+1)
+plot_comparison(gray1, gray2, "Comparison")
+
+enh2 = EnhanceImage(gray1, Color = None, Contrast = None, Sharp = 5)
+plt.imshow(enh0, cmap='gray')
+
+
+normalized_gray = gray0/gray0.max()
+plt.imshow(1/ (normalized_gray ** 2), cmap = 'gray')
+
+plt.imshow(gray0/gray0.max()) 
+
+
+
+
+
+
+selem = disk(10)
+eroded = white_tophat(gray1, selem)
+plot_comparison(gray1, eroded, 'erosion')
+
+sk = skeletonize(gray1 > 20)
+sk2 = skeletonize(eroded > 20)
+plot_comparison(sk, sk2, 'skeletonize')
+
+
+
+inverted = gray0.max()/ (gray0+1)
+
+fig, ax = try_all_threshold(inverted, figsize=(10, 8), verbose=False)
+plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#-----------------------------------------------------#
+#               Watershed
+#-----------------------------------------------------#
+
+
+
+
+
+
+
 
 
 
